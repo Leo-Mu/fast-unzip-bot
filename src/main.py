@@ -12,10 +12,11 @@ bot_token = os.environ.get("BOT_TOKEN")
 
 client = TelegramClient('bot', api_id, api_hash)
 
-@client.on(events.NewMessage)
-async def my_event_handler(event):
-    if 'hello' in event.raw_text:
-        await event.reply('hi!')
+# handle start message
+@client.on(events.NewMessage(pattern='/start'))
+async def start(event):
+    """Send a message when the command /start is issued."""
+    await event.respond('Hi!')
 
 client.start(bot_token=bot_token)
 client.run_until_disconnected()
