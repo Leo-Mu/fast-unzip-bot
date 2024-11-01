@@ -1,5 +1,7 @@
 from telethon import TelegramClient, events
+from telethon.tl.types import MessageEntityTextUrl, MessageEntityUrl
 import os
+from http_file_wrapper import HTTPRangeFile
 
 import logging
 logging.basicConfig(format='[%(levelname) %(asctime)s] %(name)s: %(message)s',
@@ -18,6 +20,24 @@ async def start(event):
     """Send a message when the command /start is issued."""
     await event.respond('Hi!')
 
+# handle /download command
+@client.on(events.NewMessage(pattern='/download'))
+async def download(event):
+    """Download the file from the given link and send it to the user."""
+    # get the link from the message
+    # 获取所有 URL 实体
+    found = False
+    for entity in event.message.entities or []:
+        if isinstance(entity, (MessageEntityUrl, MessageEntityTextUrl)):
+            found = True
+            # 提取 URL 文本
+            url = event.message.text[entity.offset:entity.offset + entity.length]
+            await event.respond('Downloading url: ' + url)
+            file = HTTPRangeFile(url)
+            await client.send_file(event.chat_id, file)
+    if not found:
+        await event.respond('No URL found in the message.')
+ 
 def main():
     """Start the bot."""
     client.run_until_disconnected()
