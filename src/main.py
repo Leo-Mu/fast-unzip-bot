@@ -1,7 +1,7 @@
 from telethon import TelegramClient, events
 from telethon.tl.types import MessageEntityTextUrl, MessageEntityUrl
 import os
-from http_file_wrapper import HTTPRangeFile
+from http_file_wrapper import HTTPFileWrapper
 
 import logging
 logging.basicConfig(format='[%(levelname) %(asctime)s] %(name)s: %(message)s',
@@ -33,8 +33,8 @@ async def download(event):
             # 提取 URL 文本
             url = event.message.text[entity.offset:entity.offset + entity.length]
             await event.respond('Downloading url: ' + url)
-            file = HTTPRangeFile(url)
-            await client.send_file(event.chat_id, file)
+            file = HTTPFileWrapper(url)
+            await client.send_file(event.chat_id, file, supports_streaming=True)
     if not found:
         await event.respond('No URL found in the message.')
  
