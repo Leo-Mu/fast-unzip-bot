@@ -1,30 +1,61 @@
 import requests
 from io import IOBase, SEEK_SET, SEEK_CUR, SEEK_END
 import os
+from urllib.parse import urlparse
 
 class HTTPRangeFile(IOBase):
     """
     将 HTTP(S) URL 包装成一个类似于 open(file, 'rb') 返回的文件对象
     支持随机读取和迭代
     """
-    def __init__(self, url, block_size=8192):
+    def __init__(self, url, block_size=8192, filename=None):
+        """
+        初始化文件对象
+        
+        Args:
+            url: 支持断点续传的文件URL
+            block_size: 读取块大小(字节)，默认8KB
+            filename: 可选的文件名，如果不提供则从URL中提取
+        """
         self.url = url
         self.block_size = block_size
         self.pos = 0
         self._buffer = b""
         self._buffer_start = 0
         
-        # 检查URL是否支持Range请求
-        head = requests.head(url)
+        # 检查URL是否支持Range请求并获取文件信息
+        head = requests.head(url, allow_redirects=True)  # 添加 allow_redirects=True
         if 'accept-ranges' not in head.headers:
             raise ValueError("URL does not support range requests")
             
+        # 保存完整的头信息
+        self._headers = dict(head.headers)
         self.size = int(head.headers['content-length'])
+
         self._check_range_support()
+        
+        # 设置文件名
+        if filename is not None:
+            self.name = filename
+        else:
+            # 尝试从 Content-Disposition 获取文件名
+            cd = head.headers.get('content-disposition')
+            if cd and 'filename=' in cd:
+                self.name = cd.split('filename=')[-1].strip('"\'')
+            else:
+                # 从 URL 路径中提取文件名
+                path = urlparse(url).path
+                self.name = os.path.basename(path) or 'download'
         
         # 用于迭代的会话
         self._session = None
         self._iterator = None
+        
+        # 模拟文件对象的基本属性
+        self.mode = 'rb'
+        
+        # 缓存常用属性
+        self._content_type = head.headers.get('content-type', 'application/octet-stream')
 
     def _check_range_support(self):
         """验证服务器是否真正支持Range请求"""
@@ -162,6 +193,26 @@ class HTTPRangeFile(IOBase):
             self._reset_iterator()
             raise
 
+    @property
+    def filename(self):
+        """兼容性属性，某些库可能通过此属性获取文件名"""
+        return self.name
+
+    def fileno(self):
+        """
+        文件描述符，我们不支持此功能
+        某些库可能会调用此方法
+        """
+        raise OSError("HTTP range file doesn't support fileno()")
+
+    def isatty(self):
+        """不是终端设备"""
+        return False
+
+    def writable(self):
+        """只读文件"""
+        return False
+
     def close(self):
         """关闭文件对象"""
         self._reset_iterator()
@@ -169,8 +220,21 @@ class HTTPRangeFile(IOBase):
 
     def __enter__(self):
         """支持 with 语句"""
+        if self.closed:
+            raise ValueError("I/O operation on closed file")
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """支持 with 语句"""
         self.close()
+
+    @property
+    def content_type(self):
+        """返回文件的 MIME 类型"""
+        return self._content_type
+    
+    # 添加属性来获取头信息
+    @property
+    def headers(self):
+        """返回原始文件的 HTTP 头信息"""
+        return self._headers
